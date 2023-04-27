@@ -1,0 +1,97 @@
+#include <Arduino.h>
+#include <unity.h>
+#include "Leds.h"
+#include "ButtonResetApi.h"
+//#include "MicrophoneApi.h"
+#include "Hub.h"
+#include "AppServices.h"
+
+Hub* hub = Hub::getInstance();
+MqttApi mqttApi = MqttApi(hub->getMonitorIdString());
+
+Leds leds;
+ButtonResetApi button(13);
+MicrophoneApi mic(35);
+WifiConns wifiConns = WifiConns();
+
+boolean waitButton()
+{
+    boolean ret = false;
+    uint32_t start_time = millis();
+    while (millis()-start_time < 15000)
+    {
+        button.saveTimeNotPressed();
+        if(button.isPressedDuringTime(3000))
+        {
+            ret = true;
+            break;
+        }
+        else
+        {
+            Serial.println(mic.getAvailableValue());
+        }
+
+    }
+
+    return ret;
+    
+}
+
+void buttonLedTests(void)
+{
+    leds.setup();
+    leds.allOff();
+    leds.blinkBlue(0.1);
+    button.setup();
+    TEST_ASSERT_TRUE(waitButton());
+    leds.blinkOff();
+    leds.allOff();
+}
+
+void setup()
+{
+    mic.setup();
+    mic.changeResistance(2);
+    Serial.begin(115200);
+    WiFi.mode(WIFI_STA);
+    Serial.println("Start Test");
+    UNITY_BEGIN();
+    WifiServices::loadConnections();
+      if (!WifiServices::someWifiAvailable()){
+    DEBUG_PRINT("We haven't got any SSID and PASS credentials, so get them now");
+  }
+  else
+  {
+      WifiServices::connectWifi(button, leds);
+      delay(5000);
+      if (WifiServices::connectWifi(button, leds) != WL_CONNECTED)
+      {
+          DEBUG_PRINT("Imposible to connect with AP. Delay and return loop");
+        leds.allOff();
+        delay(3000);
+      }
+      else
+      {
+          // If hub has not yet requested settings, request via API
+            if(!hub->isSettingsRequested()){    
+                // If not response settings from server then sleep.
+                if(!HubServices::requestSettings()){
+                DEBUG_PRINT("Not settings requested. Delay 10 seconds");
+                delay(3000);
+                }
+                else
+                {
+                    DEBUG_PRINT("Mqtt Saved");
+                }
+                
+            }
+        }
+  }
+  
+    RUN_TEST(buttonLedTests);
+}
+
+void loop()
+{
+    UNITY_END();
+}
